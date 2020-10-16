@@ -15,7 +15,7 @@ ICU_TAG        ?=release-67-1
 LIBXML2_TAG    ?=v2.9.10
 TIDYHTML_TAG   ?=5.6.0
 
-PKG_CONFIG_PATH ?=/src/lib/lib/pkgconfig
+PKG_CONFIG_PATH ?=/src/third_party/libxml2
 
 DOCKER_ENV=docker-compose -p phpwasm run --rm \
 	-e UID=${UID} \
@@ -23,7 +23,8 @@ DOCKER_ENV=docker-compose -p phpwasm run --rm \
 	-e PRELOAD_ASSETS='${PRELOAD_ASSETS}' \
 	-e INITIAL_MEMORY=${INITIAL_MEMORY}   \
 	-e ENVIRONMENT=${ENVIRONMENT}         \
-	-e EMCC_ALLOW_FASTCOMP=1
+	-e LIBXML_CFLAGS="-I/src/third_party/libxml2/include" \
+	-e LIBXML_LIBS="-L/src/third_party/libxml2/.libs"
 
 DOCKER_RUN           =${DOCKER_ENV} emscripten-builder
 DOCKER_RUN_IN_PHP    =${DOCKER_ENV} -w /src/third_party/php7.4-src/ emscripten-builder
@@ -91,6 +92,18 @@ third_party/libxml2:
 		--single-branch     \
 		--depth 1;
 
+third_party/libxml2-build: third_party/libxml2
+	@ ${DOCKER_RUN_IN_LIBXML} autoreconf -if -Wall
+	# Prepare bindings for php 
+	@ ${DOCKER_RUN_IN_LIBXML} ./configure
+	@ ${DOCKER_RUN_IN_LIBXML} make
+	# Build shared ?
+	# @ ${DOCKER_RUN_IN_LIBXML} emconfigure ../libxml2/configure --disable-shared \
+	# 	--with-minimum --with-ftp=no \
+	# 	--with-python=no --with-threads=no \
+	# 	--with-schemas --with-schematron
+	# @ ${DOCKER_RUN_IN_LIBXML} emmake make
+
 # third_party/tidy-html5:
 # 	@ ${DOCKER_RUN} git clone https://github.com/htacg/tidy-html5.git third_party/tidy-html5 \
 # 		--branch ${TIDYHTML_TAG} \
@@ -99,12 +112,14 @@ third_party/libxml2:
 
 ########### Build the objects. ###########
 
+# --with-libxml=static \
+
 third_party/php7.4-src/configure: third_party/php7.4-src/ext/vrzno/vrzno.c source/sqlite3.c
-	${DOCKER_RUN_IN_PHP} bash -c "./buildconf && emconfigure ./configure \
-		PKG_CONFIG_PATH=${PKG_CONFIG_PATH} \
+	${DOCKER_RUN_IN_PHP} ./buildconf
+	${DOCKER_RUN_IN_PHP} emconfigure ./configure \
 		--enable-embed=static \
 		--with-layout=GNU  \
-		--with-libxml=static \
+		--with-libxml      \
 		--disable-cgi      \
 		--disable-cli      \
 		--disable-all      \
@@ -126,28 +141,29 @@ third_party/php7.4-src/configure: third_party/php7.4-src/ext/vrzno/vrzno.c sourc
 		--enable-mbstring  \
 		--disable-mbregex  \
 		--enable-tokenizer \
-		--enable-vrzno     \
-	"
+		--enable-vrzno
 
 lib/libphp7.a: third_party/php7.4-src/configure third_party/php7.4-src/patched third_party/php7.4-src/**.c source/sqlite3.c
-	@ ${DOCKER_RUN_IN_PHP} emmake make -j8
+	@ ${DOCKER_RUN_IN_PHP} emmake make 
 	${DOCKER_RUN} cp -v third_party/php7.4-src/.libs/libphp7.la third_party/php7.4-src/.libs/libphp7.a lib/
 
-lib/pib_eval.o: lib/libphp7.a source/pib_eval.c
-	${DOCKER_RUN_IN_PHP} emcc ${OPTIMIZE} \
-		-I .     \
-		-I Zend  \
-		-I main  \
-		-I TSRM/ \
-		-I /src/third_party/libxml2 \
-		/src/source/pib_eval.c \
-		-o /src/lib/pib_eval.o
+# lib/pib_eval.o: lib/libphp7.a source/pib_eval.c
+# 	${DOCKER_RUN_IN_PHP} emcc ${OPTIMIZE} \
+# 		-I .     \
+# 		-I Zend  \
+# 		-I main  \
+# 		-I TSRM/ \
+# 		/src/source/pib_eval.c \
+# 		-o /src/lib/pib_eval.o
 
-lib/something:
-	${DOCKER_RUN_IN_LIBXML} ./autogen.sh
-	${DOCKER_RUN_IN_LIBXML} emconfigure ./configure --prefix=/src/lib/ | ${TIMER}
-	${DOCKER_RUN_IN_LIBXML} emmake make | ${TIMER}
-	${DOCKER_RUN_IN_LIBXML} emmake make install | ${TIMER}
+# -I /src/third_party/libxml2/include \
+# lib/something:
+# 	${DOCKER_RUN_IN_LIBXML} ./autogen.sh
+# 	${DOCKER_RUN_IN_LIBXML} emconfigure ./configure --prefix=/src/lib/ --with-http=no --with-ftp=no --with-python=no --with-threads=no
+# 	${DOCKER_RUN_IN_LIBXML} emmake make
+# 	${DOCKER_RUN_IN_LIBXML} emmake make install
+# -I /src/third_party/libxml2/include \
+# -L /src/third_party/libxml2/.libs \
 
 ########### Build the final files. ###########
 
@@ -155,10 +171,10 @@ FINAL_BUILD=${DOCKER_RUN_IN_PHP} emcc ${OPTIMIZE} \
 	-o ../../build/php-${ENVIRONMENT}${RELEASE_SUFFIX}.js \
 	--llvm-lto 2                     \
 	--preload-file ${PRELOAD_ASSETS} \
-	-s EXPORTED_FUNCTIONS='["_pib_init", "_pib_destroy", "_pib_run", "_pib_exec" "_pib_refresh", "_main", "_php_embed_init", "_php_embed_shutdown", "_php_embed_shutdown", "_zend_eval_string", "_exec_callback", "_del_callback"]' \
+	-s EXPORTED_FUNCTIONS='["_pib_init", "_pib_destroy", "_pib_run", "_pib_exec", "_pib_refresh", "_main", "_php_embed_init", "_php_embed_shutdown", "_php_embed_shutdown", "_zend_eval_string", "_exec_callback", "_del_callback"]' \
 	-s EXTRA_EXPORTED_RUNTIME_METHODS='["ccall", "UTF8ToString", "lengthBytesUTF8"]' \
 	-s ENVIRONMENT=${ENVIRONMENT}    \
-	-s MAXIMUM_MEMORY=-1             \
+	-s MAXIMUM_MEMORY=2gb \
 	-s INITIAL_MEMORY=${INITIAL_MEMORY} \
 	-s ALLOW_MEMORY_GROWTH=1         \
 	-s ASSERTIONS=${ASSERTIONS}      \
@@ -166,8 +182,9 @@ FINAL_BUILD=${DOCKER_RUN_IN_PHP} emcc ${OPTIMIZE} \
 	-s EXPORT_NAME="'PHP'"           \
 	-s MODULARIZE=1                  \
 	-s INVOKE_RUN=0                  \
-		/src/lib/pib_eval.o /src/lib/libphp7.a /src/lib/lib/libxml2.a
-
+		/src/lib/pib_eval.o /src/lib/libphp7.a
+ 
+# /src/third_party/libxml2/.libs/libxml2.a
 php-web.wasm: ENVIRONMENT=web
 php-web.wasm: lib/libphp7.a lib/pib_eval.o source/**.c source/**.h third_party/drupal-7.59/README.txt
 	${FINAL_BUILD}
