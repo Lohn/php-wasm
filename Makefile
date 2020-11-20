@@ -16,13 +16,22 @@ LIBXML2_TAG    ?=v2.9.10
 TIDYHTML_TAG   ?=5.6.0
 
 PKG_CONFIG_PATH ?=/src/lib/lib/pkgconfig
+# 		PKG_CONFIG_PATH=${PKG_CONFIG_PATH} \
 
-DOCKER_ENV=UID=${UID}docker-compose -p phpwasm run --rm \
-	-e PKG_CONFIG_PATH=${PKG_CONFIG_PATH} \
-	-e PRELOAD_ASSETS='${PRELOAD_ASSETS}' \
+DOCKER_ENV=docker-compose -p phpwasm run --rm \
+	-e UID=${UID} \
 	-e INITIAL_MEMORY=${INITIAL_MEMORY}   \
-	-e ENVIRONMENT=${ENVIRONMENT}         \
-	-e EMCC_ALLOW_FASTCOMP=1
+  -e PKG_CONFIG_PATH=${PKG_CONFIG_PATH} \
+	-e LIBXML_LIBS="-L/src/lib/lib" \
+	-e LIBXML_CFLAGS="-I/src/lib/include/libxml2" \
+	-e ENVIRONMENT=${ENVIRONMENT}         
+
+# -e PRELOAD_ASSETS='${PRELOAD_ASSETS}' \
+# -e PKG_CONFIG_PATH=${PKG_CONFIG_PATH} \
+# -e LD_LIBRARY_PATH=/src/lib
+# -e EMCC_ALLOW_FASTCOMP=1
+# -s EXPORTED_FUNCTIONS='["php_embed_init"]' \
+# --preload-file ${PRELOAD_ASSETS}
 
 DOCKER_RUN           =${DOCKER_ENV} emscripten-builder
 DOCKER_RUN_IN_PHP    =${DOCKER_ENV} -w /src/third_party/php7.4-src/ emscripten-builder
@@ -42,25 +51,25 @@ all: php-web.wasm php-webview.wasm php-node.wasm php-shell.wasm php-worker.wasm 
 third_party/sqlite3.33-src/sqlite3.c:
 	@ wget https://sqlite.org/2020/sqlite-amalgamation-3330000.zip
 	@ ${DOCKER_RUN} unzip sqlite-amalgamation-3330000.zip
-	@ ${DOCKER_RUN} rm -r sqlite-amalgamation-3330000.zip
+	@ ${DOCKER_RUN} rm sqlite-amalgamation-3330000.zip
 	@ ${DOCKER_RUN} mv sqlite-amalgamation-3330000 third_party/sqlite3.33-src
-	@ ${DOCKER_RUN} git apply --no-index patch/sqlite3-wasm.patch
+	# @ ${DOCKER_RUN} git apply --no-index patch/sqlite3-wasm.patch
 
 third_party/php7.4-src/patched: third_party/sqlite3.33-src/sqlite3.c
 	@ ${DOCKER_RUN} git clone https://github.com/php/php-src.git third_party/php7.4-src \
 		--branch ${PHP_BRANCH}   \
 		--single-branch          \
 		--depth 1
-	@ ${DOCKER_RUN} git apply --no-index patch/php7.4.patch
-	@ ${DOCKER_RUN} mkdir -p third_party/php7.4-src/preload/Zend
-	@ ${DOCKER_RUN} cp third_party/php7.4-src/Zend/bench.php third_party/php7.4-src/preload/Zend
-	@ ${DOCKER_RUN} touch third_party/php7.4-src/patched
+	# @ ${DOCKER_RUN} git apply --no-index patch/php7.4.patch
+	# @ ${DOCKER_RUN} mkdir -p third_party/php7.4-src/preload/Zend
+	# @ ${DOCKER_RUN} cp third_party/php7.4-src/Zend/bench.php third_party/php7.4-src/preload/Zend
+	# @ ${DOCKER_RUN} touch third_party/php7.4-src/patched
 
-source/sqlite3.c: third_party/sqlite3.33-src/sqlite3.c third_party/php7.4-src/patched
-	@ ${DOCKER_RUN} cp -v third_party/sqlite3.33-src/sqlite3.c source/sqlite3.c
-	@ ${DOCKER_RUN} cp -v third_party/sqlite3.33-src/sqlite3.h source/sqlite3.h
-	@ ${DOCKER_RUN} cp -v third_party/sqlite3.33-src/sqlite3.h third_party/php7.4-src/main/sqlite3.h
-	@ ${DOCKER_RUN} cp -v third_party/sqlite3.33-src/sqlite3.c third_party/php7.4-src/main/sqlite3.c
+# source/sqlite3.c: third_party/sqlite3.33-src/sqlite3.c third_party/php7.4-src/patched
+# 	@ ${DOCKER_RUN} cp -v third_party/sqlite3.33-src/sqlite3.c source/sqlite3.c
+# 	@ ${DOCKER_RUN} cp -v third_party/sqlite3.33-src/sqlite3.h source/sqlite3.h
+# 	@ ${DOCKER_RUN} cp -v third_party/sqlite3.33-src/sqlite3.h third_party/php7.4-src/main/sqlite3.h
+# 	@ ${DOCKER_RUN} cp -v third_party/sqlite3.33-src/sqlite3.c third_party/php7.4-src/main/sqlite3.c
 
 third_party/php7.4-src/ext/vrzno/vrzno.c: third_party/php7.4-src/patched
 	@ ${DOCKER_RUN} git clone https://github.com/seanmorris/vrzno.git third_party/php7.4-src/ext/vrzno \
@@ -68,15 +77,15 @@ third_party/php7.4-src/ext/vrzno/vrzno.c: third_party/php7.4-src/patched
 		--single-branch          \
 		--depth 1
 
-third_party/drupal-7.59/README.txt:
-	@ wget https://ftp.drupal.org/files/projects/drupal-7.59.zip
-	@ ${DOCKER_RUN} unzip drupal-7.59.zip
-	@ ${DOCKER_RUN} rm -v drupal-7.59.zip
-	@ ${DOCKER_RUN} mv drupal-7.59 third_party/drupal-7.59
-	@ ${DOCKER_RUN} cp -r extras/drupal-7-settings.php third_party/drupal-7.59/sites/default/settings.php
-	@ ${DOCKER_RUN} cp -r extras/drowser-files third_party/drupal-7.59/sites/default/files
-	@ ${DOCKER_RUN} cp -r extras/drowser-logo.png third_party/drupal-7.59/sites/default/logo.png
-	@ ${DOCKER_RUN} cp -r third_party/drupal-7.59 third_party/drupal-7.59 third_party/php7.4-src/preload/
+# third_party/drupal-7.59/README.txt:
+# 	@ wget https://ftp.drupal.org/files/projects/drupal-7.59.zip
+# 	@ ${DOCKER_RUN} unzip drupal-7.59.zip
+# 	@ ${DOCKER_RUN} rm -v drupal-7.59.zip
+# 	@ ${DOCKER_RUN} mv drupal-7.59 third_party/drupal-7.59
+# 	@ ${DOCKER_RUN} cp -r extras/drupal-7-settings.php third_party/drupal-7.59/sites/default/settings.php
+# 	@ ${DOCKER_RUN} cp -r extras/drowser-files third_party/drupal-7.59/sites/default/files
+# 	@ ${DOCKER_RUN} cp -r extras/drowser-logo.png third_party/drupal-7.59/sites/default/logo.png
+# 	@ ${DOCKER_RUN} cp -r third_party/drupal-7.59 third_party/drupal-7.59 third_party/php7.4-src/preload/
 
 # third_party/libicu-src:
 # 	@ ${DOCKER_RUN} git clone https://github.com/unicode-org/icu.git third_party/libicu-src \
@@ -84,11 +93,18 @@ third_party/drupal-7.59/README.txt:
 # 		--single-branch     \
 # 		--depth 1;
 
-third_party/libxml2:
+third_party/libxml2/README: third_party/libxml2/README
 	@ ${DOCKER_RUN} git clone https://gitlab.gnome.org/GNOME/libxml2.git third_party/libxml2 \
 		--branch ${LIBXML2_TAG} \
 		--single-branch     \
 		--depth 1;
+
+third_party/libxml2/configure: third_party/libxml2/configure
+	${DOCKER_RUN_IN_LIBXML} ./autogen.sh
+	${DOCKER_RUN_IN_LIBXML} emconfigure ./configure --prefix=/src/lib/ --enable-static --disable-shared \
+		--with-python=no --with-threads=no
+	${DOCKER_RUN_IN_LIBXML} emmake make
+	${DOCKER_RUN_IN_LIBXML} emmake make install
 
 # third_party/tidy-html5:
 # 	@ ${DOCKER_RUN} git clone https://github.com/htacg/tidy-html5.git third_party/tidy-html5 \
@@ -98,13 +114,11 @@ third_party/libxml2:
 
 ########### Build the objects. ###########
 
-third_party/php7.4-src/configure: third_party/php7.4-src/ext/vrzno/vrzno.c source/sqlite3.c
-# 	${DOCKER_RUN_IN_PHP} ./buildconf --force
-	${DOCKER_RUN_IN_PHP} bash -c "emconfigure ./configure \
-		PKG_CONFIG_PATH=${PKG_CONFIG_PATH} \
+third_party/php7.4-src/configure: third_party/php7.4-src/ext/vrzno/vrzno.c source/sqlite3.c third_party/libxml2/configure
+	${DOCKER_RUN_IN_PHP} bash -c "./buildconf --force && emconfigure ./configure \
 		--enable-embed=static \
 		--with-layout=GNU  \
-		--with-libxml=static \
+		--with-libxml      \
 		--disable-cgi      \
 		--disable-cli      \
 		--disable-all      \
@@ -127,10 +141,11 @@ third_party/php7.4-src/configure: third_party/php7.4-src/ext/vrzno/vrzno.c sourc
 		--disable-mbregex  \
 		--enable-tokenizer \
 		--enable-vrzno     \
+		PKG_CONFIG_PATH=/src/lib/lib/pkgconfig \
 	"
 
 lib/libphp7.a: third_party/php7.4-src/configure third_party/php7.4-src/patched third_party/php7.4-src/**.c source/sqlite3.c
-	@ ${DOCKER_RUN_IN_PHP} emmake make -j8
+	${DOCKER_RUN_IN_PHP} emmake make 
 	${DOCKER_RUN} cp -v third_party/php7.4-src/.libs/libphp7.la third_party/php7.4-src/.libs/libphp7.a lib/
 
 lib/pib_eval.o: lib/libphp7.a source/pib_eval.c
@@ -140,25 +155,20 @@ lib/pib_eval.o: lib/libphp7.a source/pib_eval.c
 		-I main  \
 		-I TSRM/ \
 		-I /src/third_party/libxml2 \
+		-c \
 		/src/source/pib_eval.c \
-		-o /src/lib/pib_eval.o
-
-lib/something:
-	${DOCKER_RUN_IN_LIBXML} ./autogen.sh
-	${DOCKER_RUN_IN_LIBXML} emconfigure ./configure --prefix=/src/lib/ | ${TIMER}
-	${DOCKER_RUN_IN_LIBXML} emmake make | ${TIMER}
-	${DOCKER_RUN_IN_LIBXML} emmake make install | ${TIMER}
+		-o /src/lib/pib_eval.o \
+		-s ERROR_ON_UNDEFINED_SYMBOLS=0 
 
 ########### Build the final files. ###########
 
 FINAL_BUILD=${DOCKER_RUN_IN_PHP} emcc ${OPTIMIZE} \
 	-o ../../build/php-${ENVIRONMENT}${RELEASE_SUFFIX}.js \
 	--llvm-lto 2                     \
-	--preload-file ${PRELOAD_ASSETS} \
-	-s EXPORTED_FUNCTIONS='["_pib_init", "_pib_destroy", "_pib_run", "_pib_exec" "_pib_refresh", "_main", "_php_embed_init", "_php_embed_shutdown", "_php_embed_shutdown", "_zend_eval_string", "_exec_callback", "_del_callback"]' \
+	-s EXPORTED_FUNCTIONS='["_pib_init", "_pib_destroy", "_pib_run", "_pib_exec", "_pib_refresh", "_main", "_php_embed_init", "_php_embed_shutdown", "_php_embed_shutdown", "_zend_eval_string", "_exec_callback", "_del_callback"]' \
 	-s EXTRA_EXPORTED_RUNTIME_METHODS='["ccall", "UTF8ToString", "lengthBytesUTF8"]' \
 	-s ENVIRONMENT=${ENVIRONMENT}    \
-	-s MAXIMUM_MEMORY=-1             \
+	-s MAXIMUM_MEMORY=2gb             \
 	-s INITIAL_MEMORY=${INITIAL_MEMORY} \
 	-s ALLOW_MEMORY_GROWTH=1         \
 	-s ASSERTIONS=${ASSERTIONS}      \
@@ -169,11 +179,11 @@ FINAL_BUILD=${DOCKER_RUN_IN_PHP} emcc ${OPTIMIZE} \
 		/src/lib/pib_eval.o /src/lib/libphp7.a /src/lib/lib/libxml2.a
 
 php-web.wasm: ENVIRONMENT=web
-php-web.wasm: lib/libphp7.a lib/pib_eval.o source/**.c source/**.h third_party/drupal-7.59/README.txt
+php-web.wasm: lib/libphp7.a lib/pib_eval.o source/**.c source/**.h
 	${FINAL_BUILD}
-	@ ${DOCKER_RUN} cp -v build/php-${ENVIRONMENT}${RELEASE_SUFFIX}.* ./
-	@ ${DOCKER_RUN} cp -v build/php-${ENVIRONMENT}${RELEASE_SUFFIX}.* ./docs-source/app/assets
-	@ ${DOCKER_RUN} cp -v build/php-${ENVIRONMENT}${RELEASE_SUFFIX}.* ./docs-source/public
+	# @ ${DOCKER_RUN} cp -v build/php-${ENVIRONMENT}${RELEASE_SUFFIX}.* ./
+	# @ ${DOCKER_RUN} cp -v build/php-${ENVIRONMENT}${RELEASE_SUFFIX}.* ./docs-source/app/assets
+	# @ ${DOCKER_RUN} cp -v build/php-${ENVIRONMENT}${RELEASE_SUFFIX}.* ./docs-source/public
 
 php-worker.wasm: ENVIRONMENT=worker
 php-worker.wasm: lib/libphp7.a lib/pib_eval.o source/**.c source/**.h

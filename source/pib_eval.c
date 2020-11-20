@@ -8,8 +8,8 @@
 
 #include "../php7.4-src/ext/vrzno/php_vrzno.h"
 
-#include "sqlite3.h"
-#include "sqlite3.c"
+/* #include "sqlite3.h" */
+/* #include "sqlite3.c" */
 
 int main() { return 0; }
 
