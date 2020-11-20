@@ -17,12 +17,17 @@ TIDYHTML_TAG   ?=5.6.0
 
 PKG_CONFIG_PATH ?=/src/lib/lib/pkgconfig
 
-DOCKER_ENV=UID=${UID}docker-compose -p phpwasm run --rm \
+DOCKER_ENV=docker-compose -p phpwasm run --rm \
+	-e UID=${UID} \
 	-e PKG_CONFIG_PATH=${PKG_CONFIG_PATH} \
 	-e PRELOAD_ASSETS='${PRELOAD_ASSETS}' \
 	-e INITIAL_MEMORY=${INITIAL_MEMORY}   \
-	-e ENVIRONMENT=${ENVIRONMENT}         \
-	-e EMCC_ALLOW_FASTCOMP=1
+	-e ENVIRONMENT=${ENVIRONMENT}         
+	# -e LIBXML_LIBS="-L/src/third_party/libxml2/.libs" \
+	# -e LIBXML_CFLAGS="-I/src/third_party/libxml2/include"
+
+# -e LD_LIBRARY_PATH=/src/lib
+# -e EMCC_ALLOW_FASTCOMP=1
 
 DOCKER_RUN           =${DOCKER_ENV} emscripten-builder
 DOCKER_RUN_IN_PHP    =${DOCKER_ENV} -w /src/third_party/php7.4-src/ emscripten-builder
@@ -84,11 +89,19 @@ third_party/drupal-7.59/README.txt:
 # 		--single-branch     \
 # 		--depth 1;
 
-third_party/libxml2:
-	@ ${DOCKER_RUN} git clone https://gitlab.gnome.org/GNOME/libxml2.git third_party/libxml2 \
-		--branch ${LIBXML2_TAG} \
-		--single-branch     \
-		--depth 1;
+# third_party/libxml2/README:
+# 	@ ${DOCKER_RUN} git clone https://gitlab.gnome.org/GNOME/libxml2.git third_party/libxml2 \
+# 		--branch ${LIBXML2_TAG} \
+# 		--single-branch     \
+# 		--depth 1;
+#
+# third_party/libxml2/configure:
+# 	${DOCKER_RUN_IN_LIBXML} autoreconf -if -Wall
+# 	${DOCKER_RUN_IN_LIBXML} emconfigure ../libxml2/configure --enable-static --disable-shared \
+# 		--with-minimum --with-http=no --with-ftp=no \
+# 		--with-python=no --with-threads=no \
+# 		--with-schemas --with-schematron
+# 	${DOCKER_RUN_IN_LIBXML} emmake make
 
 # third_party/tidy-html5:
 # 	@ ${DOCKER_RUN} git clone https://github.com/htacg/tidy-html5.git third_party/tidy-html5 \
@@ -98,13 +111,12 @@ third_party/libxml2:
 
 ########### Build the objects. ###########
 
-third_party/php7.4-src/configure: third_party/php7.4-src/ext/vrzno/vrzno.c source/sqlite3.c
-# 	${DOCKER_RUN_IN_PHP} ./buildconf --force
-	${DOCKER_RUN_IN_PHP} bash -c "emconfigure ./configure \
+third_party/php7.4-src/configure: third_party/php7.4-src/ext/vrzno/vrzno.c source/sqlite3.c third_party/libxml2/configure
+	${DOCKER_RUN_IN_PHP} bash -c "./buildconf --force && emconfigure ./configure \
 		PKG_CONFIG_PATH=${PKG_CONFIG_PATH} \
 		--enable-embed=static \
 		--with-layout=GNU  \
-		--with-libxml=static \
+		--with-libxml \
 		--disable-cgi      \
 		--disable-cli      \
 		--disable-all      \
@@ -130,7 +142,7 @@ third_party/php7.4-src/configure: third_party/php7.4-src/ext/vrzno/vrzno.c sourc
 	"
 
 lib/libphp7.a: third_party/php7.4-src/configure third_party/php7.4-src/patched third_party/php7.4-src/**.c source/sqlite3.c
-	@ ${DOCKER_RUN_IN_PHP} emmake make -j8
+	${DOCKER_RUN_IN_PHP} emmake make -j8
 	${DOCKER_RUN} cp -v third_party/php7.4-src/.libs/libphp7.la third_party/php7.4-src/.libs/libphp7.a lib/
 
 lib/pib_eval.o: lib/libphp7.a source/pib_eval.c
@@ -140,25 +152,22 @@ lib/pib_eval.o: lib/libphp7.a source/pib_eval.c
 		-I main  \
 		-I TSRM/ \
 		-I /src/third_party/libxml2 \
+		-c \
 		/src/source/pib_eval.c \
-		-o /src/lib/pib_eval.o
+		-o /src/lib/pib_eval.o \
+		-s ERROR_ON_UNDEFINED_SYMBOLS=0 
 
-lib/something:
-	${DOCKER_RUN_IN_LIBXML} ./autogen.sh
-	${DOCKER_RUN_IN_LIBXML} emconfigure ./configure --prefix=/src/lib/ | ${TIMER}
-	${DOCKER_RUN_IN_LIBXML} emmake make | ${TIMER}
-	${DOCKER_RUN_IN_LIBXML} emmake make install | ${TIMER}
-
+# -s EXPORTED_FUNCTIONS='["php_embed_init"]' \
 ########### Build the final files. ###########
 
 FINAL_BUILD=${DOCKER_RUN_IN_PHP} emcc ${OPTIMIZE} \
 	-o ../../build/php-${ENVIRONMENT}${RELEASE_SUFFIX}.js \
 	--llvm-lto 2                     \
 	--preload-file ${PRELOAD_ASSETS} \
-	-s EXPORTED_FUNCTIONS='["_pib_init", "_pib_destroy", "_pib_run", "_pib_exec" "_pib_refresh", "_main", "_php_embed_init", "_php_embed_shutdown", "_php_embed_shutdown", "_zend_eval_string", "_exec_callback", "_del_callback"]' \
+	-s EXPORTED_FUNCTIONS='["_pib_init", "_pib_destroy", "_pib_run", "_pib_exec", "_pib_refresh", "_main", "_php_embed_init", "_php_embed_shutdown", "_php_embed_shutdown", "_zend_eval_string", "_exec_callback", "_del_callback"]' \
 	-s EXTRA_EXPORTED_RUNTIME_METHODS='["ccall", "UTF8ToString", "lengthBytesUTF8"]' \
 	-s ENVIRONMENT=${ENVIRONMENT}    \
-	-s MAXIMUM_MEMORY=-1             \
+	-s MAXIMUM_MEMORY=2gb             \
 	-s INITIAL_MEMORY=${INITIAL_MEMORY} \
 	-s ALLOW_MEMORY_GROWTH=1         \
 	-s ASSERTIONS=${ASSERTIONS}      \
