@@ -12,6 +12,7 @@ RUN apt-get update && \
 		autoconf \
 		libtool \
 		pkgconf \
+    python3 \
 		bison \
 		flex \
 		make \
